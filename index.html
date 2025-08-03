@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dự Báo Thời Tiết</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .weather-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            backdrop-filter: blur(10px);
+        }
+        .search-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">🌤️ Dự Báo Thời Tiết</h1>
+            <p class="text-white/80 text-lg">Kiểm tra thời tiết hiện tại và dự báo 5 ngày tới</p>
+        </div>
+
+        <!-- Search Section -->
+        <div class="max-w-md mx-auto mb-8">
+            <div class="relative">
+                <input 
+                    type="text" 
+                    id="cityInput" 
+                    placeholder="Nhập tên thành phố..." 
+                    class="search-input w-full px-4 py-3 pl-12 rounded-xl border-0 bg-white/20 backdrop-blur-md text-white placeholder-white/70 text-lg"
+                >
+                <div class="absolute left-4 top-1/2 transform -translate-y-1/2">
+                    <svg class="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </div>
+                <button 
+                    id="searchBtn" 
+                    class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white/30 hover:bg-white/40 text-white px-4 py-2 rounded-lg transition-all duration-200"
+                >
+                    Tìm
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="hidden text-center mb-8">
+            <div class="loading inline-block w-8 h-8 border-4 border-white/30 border-t-white rounded-full"></div>
+            <p class="text-white mt-2">Đang tải dữ liệu...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error" class="hidden max-w-md mx-auto mb-8 p-4 bg-red-500/20 backdrop-blur-md border border-red-300/30 rounded-xl text-white text-center">
+            <p id="errorMessage"></p>
+        </div>
+
+        <!-- Current Weather -->
+        <div id="currentWeather" class="hidden max-w-2xl mx-auto mb-8">
+            <div class="weather-card rounded-2xl p-8 text-white shadow-2xl fade-in">
+                <div class="text-center">
+                    <h2 id="cityName" class="text-2xl font-semibold mb-2"></h2>
+                    <div class="flex items-center justify-center mb-4">
+                        <img id="weatherIcon" src="" alt="" class="w-20 h-20">
+                        <div class="ml-4">
+                            <div id="temperature" class="text-5xl font-bold"></div>
+                            <div id="description" class="text-xl capitalize"></div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                        <div class="bg-white/10 rounded-lg p-3">
+                            <div class="text-sm opacity-80">Cảm giác như</div>
+                            <div id="feelsLike" class="text-lg font-semibold"></div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-3">
+                            <div class="text-sm opacity-80">Độ ẩm</div>
+                            <div id="humidity" class="text-lg font-semibold"></div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-3">
+                            <div class="text-sm opacity-80">Tốc độ gió</div>
+                            <div id="windSpeed" class="text-lg font-semibold"></div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-3">
+                            <div class="text-sm opacity-80">Áp suất</div>
+                            <div id="pressure" class="text-lg font-semibold"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5-Day Forecast -->
+        <div id="forecast" class="hidden max-w-4xl mx-auto">
+            <h3 class="text-2xl font-bold text-white text-center mb-6">Dự báo 5 ngày tới</h3>
+            <div id="forecastCards" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <!-- Forecast cards will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = '272c379c35291a2d5316c4797efc596f';
+        const BASE_URL = 'https://api.openweathermap.org/data/2.5';
+
+        const cityInput = document.getElementById('cityInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const errorMessage = document.getElementById('errorMessage');
+        const currentWeather = document.getElementById('currentWeather');
+        const forecast = document.getElementById('forecast');
+
+        // Elements for current weather
+        const cityName = document.getElementById('cityName');
+        const weatherIcon = document.getElementById('weatherIcon');
+        const temperature = document.getElementById('temperature');
+        const description = document.getElementById('description');
+        const feelsLike = document.getElementById('feelsLike');
+        const humidity = document.getElementById('humidity');
+        const windSpeed = document.getElementById('windSpeed');
+        const pressure = document.getElementById('pressure');
+        const forecastCards = document.getElementById('forecastCards');
+
+        // Event listeners
+        searchBtn.addEventListener('click', handleSearch);
+        cityInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSearch();
+            }
+        });
+
+        // Load default city on page load
+        window.addEventListener('load', () => {
+            getWeatherData('Hà Nội');
+        });
+
+        async function handleSearch() {
+            const city = cityInput.value.trim();
+            if (!city) {
+                showError('Vui lòng nhập tên thành phố');
+                return;
+            }
+            await getWeatherData(city);
+        }
+
+        async function getWeatherData(city) {
+            showLoading();
+            hideError();
+            hideWeatherData();
+
+            try {
+                // Get current weather
+                const currentResponse = await fetch(
+                    `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=vi`
+                );
+
+                if (!currentResponse.ok) {
+                    throw new Error('Không tìm thấy thành phố');
+                }
+
+                const currentData = await currentResponse.json();
+
+                // Get 5-day forecast
+                const forecastResponse = await fetch(
+                    `${BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=vi`
+                );
+
+                const forecastData = await forecastResponse.json();
+
+                displayCurrentWeather(currentData);
+                displayForecast(forecastData);
+                showWeatherData();
+
+            } catch (err) {
+                showError(err.message || 'Có lỗi xảy ra khi tải dữ liệu');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayCurrentWeather(data) {
+            cityName.textContent = `${data.name}, ${data.sys.country}`;
+            weatherIcon.src = `https://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png`;
+            weatherIcon.alt = data.weather[0].description;
+            temperature.textContent = `${Math.round(data.main.temp)}°C`;
+            description.textContent = data.weather[0].description;
+            feelsLike.textContent = `${Math.round(data.main.feels_like)}°C`;
+            humidity.textContent = `${data.main.humidity}%`;
+            windSpeed.textContent = `${data.wind.speed} m/s`;
+            pressure.textContent = `${data.main.pressure} hPa`;
+        }
+
+        function displayForecast(data) {
+            // Get one forecast per day (around noon)
+            const dailyForecasts = data.list.filter((item, index) => index % 8 === 0).slice(0, 5);
+            
+            forecastCards.innerHTML = '';
+
+            dailyForecasts.forEach(item => {
+                const date = new Date(item.dt * 1000);
+                const dayName = date.toLocaleDateString('vi-VN', { weekday: 'short' });
+                const dayDate = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+
+                const card = document.createElement('div');
+                card.className = 'bg-white/10 backdrop-blur-md rounded-xl p-4 text-white text-center fade-in';
+                card.innerHTML = `
+                    <div class="font-semibold mb-1">${dayName}</div>
+                    <div class="text-sm opacity-80 mb-3">${dayDate}</div>
+                    <img src="https://openweathermap.org/img/wn/${item.weather[0].icon}.png" 
+                         alt="${item.weather[0].description}" 
+                         class="w-12 h-12 mx-auto mb-2">
+                    <div class="font-bold text-lg">${Math.round(item.main.temp)}°C</div>
+                    <div class="text-sm opacity-80 capitalize">${item.weather[0].description}</div>
+                    <div class="text-xs mt-2 opacity-70">
+                        💧 ${item.main.humidity}% | 💨 ${item.wind.speed} m/s
+                    </div>
+                `;
+                forecastCards.appendChild(card);
+            });
+        }
+
+        function showLoading() {
+            loading.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            loading.classList.add('hidden');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            error.classList.remove('hidden');
+        }
+
+        function hideError() {
+            error.classList.add('hidden');
+        }
+
+        function showWeatherData() {
+            currentWeather.classList.remove('hidden');
+            forecast.classList.remove('hidden');
+        }
+
+        function hideWeatherData() {
+            currentWeather.classList.add('hidden');
+            forecast.classList.add('hidden');
+        }
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'969696c2465e04ac',t:'MTc1NDIzMjIyMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
